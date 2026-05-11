@@ -192,7 +192,7 @@ In this project's root directory, create a file named `docker-compose.yml`.
   * POSTGRES_USER: postgres
   * POSTGRES_PASSWORD: password
   * POSTGRES_DB: movies
-* Use `5432:5432` as the ports of `db`.
+* Use `5432:5432` as the port of `db`.
 
 Make sure that Docker Desktop is running.
 
@@ -233,6 +233,7 @@ Now, we should modify `main.py` such that the FastAPI routes to the real Postgre
 
   return db_review
   ```
+
   - `models.Review()`: Create a Python ORM object that represents a row in the database table
   - `db.add()`: Insert data into the ORM object
   - `db.commit()`: Permanently save the changes into PostgreSQL
@@ -244,6 +245,7 @@ Now, we should modify `main.py` such that the FastAPI routes to the real Postgre
   ```python
   return db.query(models.Review).all()
   ```
+
   The SQL equivalent of it is: `SELECT * FROM reviews`.
 * Modify the `PUT` function:
   Query the database to look for the row of the review with the given ID.
@@ -262,6 +264,7 @@ Now, we should modify `main.py` such that the FastAPI routes to the real Postgre
 
   return db_review
   ```
+
   The query is equivalent to this SQL: `SELECT * FROM reviews WHERE id = ? LIMIT 1;`
 * Modify the `DELETE` function:
   Use the exact same query to find the target row.
@@ -279,3 +282,114 @@ Now, we should modify `main.py` such that the FastAPI routes to the real Postgre
       "message": f"Review of ID {id} has been deleted."
   }
   ```
+
+### 5 - Dockerize the FastAPI app
+
+In this project's root directory, create a file named `Dockerfile`.
+
+The Dockerfile defines the steps to build a Docker image for the app.
+
+#### 5.1 - Build the `Dockerfile`
+
+These are the commands/instructions/directives that will be used in the Dockerfile of this project:
+
+* FROM
+* WORKDIR
+* COPY
+* RUN
+* EXPOSE
+* CMD
+
+Study each of them, and use them to write commands that carry out these steps:
+
+1. Use Python version 3.12.
+2. Use `/app` as the folder where the app runs, acting as the 'current directory'.
+3. Copy the dependencies file - `requirements.txt` into the current directory of the container.
+4. `pip install` all the dependencies using the `txt` file.
+5. Copy everything under the `app` folder into the `/app/app` folder of the container.
+   * In the container, `/app` is where the project resides.
+   * So, the actual `/app` folder in the container will then be located as `/app/app`.
+6. Let the app use port 8000.
+7. Run the `uvicorn` command to start the app on `0.0.0.0` port `8000`.
+
+---
+
+*Question: Why don't we copy everything into the container first before running `pip install`?*
+
+Answer: 
+
+If we do so, then as long as any of the project's content is modified but `requirements.txt` has no change, `pip install` will still be re-run unnecessarily, causing waste of time and resources.
+
+This is because Docker builds in layers (steps) and cache. The numbering of steps shown above are layers. If a layer has changes, then that layer and all those after it will be rebuilt. Meanwhile, the layers before are not, as they are cached and reused.
+
+Therefore, by doing so, `pip install` only runs when the dependencies change. This makes builds faster.
+
+---
+
+#### 5.2 - Update `docker-compose.yml`
+
+First of all, we must know that Docker containers communicate with one another via service names.
+
+This is because in the Compose network, a service name is actually the DNS hostname, which points to the container's IP automatically.
+
+We've already created and defined a service - `db` in the `docker-compose.yml`, which is the PostgreSQL database.
+
+Now, we will create and define another service in there for our app instead, which is just called `app`, and we'll name the container `fastapi-app`.
+
+Therefore, we'll end up with 2 services. So, for `app` to talk to `db`, the database URL specified in `database.py` of `app` must be modified. Instead of `localhost`, it must be changed to the service name of the database container - `db`.
+
+```python
+DATABASE_URL = "postgresql://postgres:password@db:5432/movies"
+```
+
+Now we can update `docker-compose.yml`.
+
+* Add healthcheck to `db`.
+  ```Dockerfile
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U postgres"]
+    interval: 5s
+    timeout: 5s
+    retries: 10
+  ```
+* Create a service named `app`.
+* Specify where the `Dockerfile` is located relative to this `.yml` file. So it reads the `Dockerfile` to build and create the image.
+* Name the container as `fastapi-app`.
+* Use port `8000:8000`.
+* Specify that it depends on the service `db`.
+  * `condition: service_healthy`
+
+With the healthcheck on `db` and `app` depending on `db`'s health before it starts, we fixed the problem where FastAPI starts before PostgreSQL is ready, which causes build errors.
+
+---
+
+*Question: When to use `-` prefix in docker-compose?*
+
+Answer: The `-` prefix indicates a sequence (ordered list of values) in YAML.
+
+---
+
+Now, run this command to build and start the containers:
+
+```cmd
+docker compose up --build
+```
+
+If you wish to stop and delete the containers before rebuilding, run:
+
+```cmd
+docker compose down
+```
+
+---
+
+*Question: What's the difference between `docker compose up -d` and `docker compose up --build`?*
+
+Answer:
+
+| Command        | Build image | Runs in background | Shows logs |
+| -------------- | :---------: | :----------------: | :--------: |
+| `up -d`      |     ✅     |         ❌         |     ✅     |
+| `up --build` |     ❌     |         ✅         |     ❌     |
+
+Personally I prefer combining both options: `docker compose --build -d`, but this doesn't show the logs.
