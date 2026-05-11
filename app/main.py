@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from app.schemas import Review
-
-reviews = []
+from app.database import SessionLocal
+from app import models
 
 # Create the app
 app = FastAPI()
@@ -22,13 +22,24 @@ def health():
 # Add/Create review
 @app.post("/reviews")
 def create_review(review: Review):
-    reviews.append(review)
-    return review
+    db = SessionLocal()
+    db_review = models.Review(
+        movie=review.movie,
+        rating=review.rating,
+        comment=review.comment
+    )
+
+    db.add(db_review)
+    db.commit()
+    db.refresh(db_review)
+
+    return db_review
 
 # Read reviews
 @app.get("/reviews")
 def get_reviews():
-    return reviews
+    db = SessionLocal()
+    return db.query(models.Review).all()
 
 # Update review
 @app.put("/reviews")
@@ -36,13 +47,29 @@ def update_review(
     id: int,
     review: Review
 ):
-    reviews[id] = review
-    return review
+    db = SessionLocal()
+
+    db_review = db.query(models.Review).filter(models.Review.id == id).first()
+
+    db_review.movie = review.movie
+    db_review.rating = review.rating
+    db_review.comment = review.comment
+
+    db.commit()
+    db.refresh(db_review)
+
+    return db_review
 
 # Delete review
 @app.delete("/reviews/{id}")
 def delete_review(id: int):
-    reviews.pop(id)
+    db = SessionLocal()
+
+    db_review = db.query(models.Review).filter(models.Review.id == id).first()
+
+    db.delete(db_review)
+    db.commit()
+
     return {
-        "message": "Review deleted"
+        "message": f"Review of ID {id} has been deleted."
     }

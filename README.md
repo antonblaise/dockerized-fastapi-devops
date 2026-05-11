@@ -4,7 +4,7 @@ A Dockerized app that views, creates and deletes movie reviews.
 
 ## Objectives
 
-* Using Python, build a working Rest API backend service that manages (CRUD) movie reviews.
+* Using Python, build a working REST API backend service that manages (CRUD) movie reviews.
 * Containerize the app and the PostgreSQL with Docker.
 * Using Terraform, provision an AWS EC2 infrastructure where the app containers  are deployed and run.
 * CI/CD with GitHub Actions - validate build integrity on each push.
@@ -129,3 +129,153 @@ INFO:     127.0.0.1:11580 - "GET /reviews HTTP/1.1" 200 OK
 ```
 
 ### 4 - PostgreSQL
+
+Install DB dependencies for Python.
+
+```cmd
+pip install sqlalchemy psycopg2-binary
+```
+
+Update `requirements.txt`
+
+```plaintext
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+```
+
+#### 4.1 - Database connection
+
+In `app` folder, create `database.py` as the database connection file.
+
+* Import `create_engine` from `sqlalchemy`.
+* Import `sessionmaker` from `orm` of `sqlalchemy`.
+  * ORM: Object Relational Mapper
+* Store the database URL - `postgresql://postgres:password@localhost:5432/movies` into a string.
+* Use the URL as input argument to create an **engine**, stored in a variable. An engine is a connection to the database.
+* Create a local session stored in a variable named `SessionLocal`, using these parameters:
+  * `bind`: the engine. Means "use this engine".
+  * `autoflush`: False. Do not automatically flush pending changes to the database before queries.
+  * `autocommit`: False. Transactions must be explicitly committed to persist changes in PostgreSQL.
+
+#### 4.2 - Database model
+
+In `app` folder, create `models.py` that creates and defines the database table.
+
+* Import `Column`, `Integer` and `String` from `sqlalchemy`.
+  * Column: Represents a column in a database table
+  * Integer, String: Data types in the database table
+* Import `declarative_base` from `orm` of `sqlalchemy`. It is the foundation to create ORM models, which allows us to define database tables as Python classes.
+* Import the database engine from `database.py`.
+* Create a declarative base and store it in a variable named `Base`.
+* We wil now create the blueprint of `Review` here the SQLAlchemy way instead.
+* Using `Base` as the input argument, create the `Review` class.
+  * Give it a table name, defined as `__tablename__`.
+  * Use `Column`, `Integer` and `String` to create these columns in the table:
+    * id (it's the primary key and also the index)
+    * movie (movie name)
+    * rating (integer)
+    * comment
+* Finally, add this line at the end of the file: `Base.metadata.create_all(bind=engine)`. This is to use the engine to create all the database tables defined, if they don't already exist.
+
+#### 4.3 - PostgreSQL on Docker
+
+Now, we need to have PostgreSQL running. It's good to build and run it on Docker because it's cleaner, portable, avoids local installation mess, and it's more aligned with DevOps mindset.
+
+In this project's root directory, create a file named `docker-compose.yml`.
+
+* Create a service named `db`.
+* Name the container as `postgres-db`.
+* Use the official `postgres` image of PostgreSQL.
+* Specify the `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB` under `environment` as the environment variables. Notice that they align with the `DATABASE_URL` defined in `database.py`.
+  * POSTGRES_USER: postgres
+  * POSTGRES_PASSWORD: password
+  * POSTGRES_DB: movies
+* Use `5432:5432` as the ports of `db`.
+
+Make sure that Docker Desktop is running.
+
+Use this command to run the PostgreSQL container:
+
+```cmd
+docker compose up -d
+```
+
+Then, we can either use command `docker ps` or use Docker Desktop to verify that the container is running.
+
+#### 4.4 Change from temporary data to persistent PostgreSQL data
+
+Now, we should modify `main.py` such that the FastAPI routes to the real PostgreSQL database,
+
+* Delete `reviews` list.
+* Import `SessionLocal` from `database.py`. This imports the PostgreSQL session into
+* Import `models.py`. This imports the `Reviews` blueprint and the `reviews` database table.
+* In each CRUD function, start by creating a session and store it in a variable named `db` for use.
+
+  ```python
+  db = SessionLocal()
+  ```
+* Modify the `POST` function:
+  Create a row in the `reviews` table while passing the `review` object data into it.
+  Add the row into the db. Commit the changes, and refresh (reload) the row in Python.
+
+  ```python
+  db_review = models.Review(
+      movie=review.movie,
+      rating=review.rating,
+      comment=review.comment
+  )
+
+  db.add(db_review)
+  db.commit()
+  db.refresh(db_review)
+
+  return db_review
+  ```
+  - `models.Review()`: Create a row in the database table
+  - `db.add()`: Insert data
+  - `db.commit()`: Permanently save the changes into PostgreSQL
+  - `db.refresh()`: Sync/Update the Python object `db` with PostgreSQL
+  - `return db_review`: Return the inserted/added review
+* Note: The `Review` imported from `schema.py` is the data type of each review, whereas the `Review` imported from `models.py` is the database table `reviews`.
+* Modify the `GET` function:
+
+  ```python
+  return db.query(models.Review).all()
+  ```
+  The SQL equivalent of it is: `SELECT * FROM reviews`.
+* Modify the `PUT` function:
+  Query the database to look for the row of the review with the given ID.
+  Modify each key of that row.
+  Commit the changes and refresh the row in Python.
+
+  ```python
+  db_review = db.query(models.Review).filter(models.Review.id == id).first()
+
+  db_review.movie = review.movie
+  db_review.rating = review.rating
+  db_review.comment = review.comment
+
+  db.commit()
+  db.refresh(db_review)
+
+  return db_review
+  ```
+  The query is equivalent to this SQL: `SELECT * FROM reviews WHERE id = ? LIMIT 1;`
+* Modify the `DELETE` function:
+  Use the exact same query to find the target row.
+  Then, delete the row, and commit the changes.
+  No refresh needed because the row has already been deleted.
+  Finally, return a message to indicate that the review of that ID has been deleted.
+
+  ```python
+  db_review = db.query(models.Review).filter(models.Review.id == id).first()
+
+  db.delete(db_review)
+  db.commit()
+
+  return {
+      "message": f"Review of ID {id} has been deleted."
+  }
+  ```
