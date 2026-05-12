@@ -13,16 +13,11 @@ A Dockerized app that views, creates and deletes movie reviews.
 
 ```plaintext
 Client
-  ↓
-FastAPI Container
-  ↓
-PostgreSQL Container
-  ↓
-Docker Compose
-  ↓
-Terraform → AWS EC2
-  ↓
-GitHub Actions CI/CD
+ → FastAPI (Docker)
+ → PostgreSQL (Docker)
+ → GitHub Actions (CI)
+ → Terraform (Infrastructure)
+ → AWS (EC2)
 ```
 
 ## Milestones
@@ -398,7 +393,7 @@ Personally I prefer combining both options: `docker compose --build -d`, but thi
 
 For this project, we'll introduce an automated CI/CD that runs during each push to its GitHub repository to check the software integrity. It builds the Docker image and checks whether it's successful.
 
-The workflow:
+#### 6.1 - The workflow
 
 ```plaintext
 push to GitHub
@@ -437,14 +432,24 @@ Write the `.yml` file to build the workflow shown above.
 * Job name: `build-docker-image`
 * Runs on: `ubuntu-latest`
 
-Recommendations: 
+#### 6.2 - Recommendations
 
-Give the name to each step run.
+Give a name to each step.
 
 ```yaml
 steps:
   - name: ...
     run: ...
+```
+
+Use `paths-ignore` to ignore changes from some files/folders.
+
+```yaml
+on:
+  push:
+    paths-ignore:
+    - ...
+    - ...
 ```
 
 Use a simple bash snippet to test the FastAPI endpoint using a loop and pause intervals. Exit with code 0 if it starts properly in time. Otherwise, exit with code 1 (error). Use this command to test the endpoint:

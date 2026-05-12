@@ -1,6 +1,10 @@
 name: docker-build
 run-name: Build Docker image and test FastAPI endpoint
-on: [push]
+on:
+  push:
+    paths-ignore:
+      - 'README.md'
+      - 'LICENSE'
 jobs:
   build-docker-image:
     runs-on: ubuntu-latest
