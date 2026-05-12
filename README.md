@@ -316,7 +316,7 @@ Study each of them, and use them to write commands that carry out these steps:
 
 *Question: Why don't we copy everything into the container first before running `pip install`?*
 
-Answer: 
+Answer:
 
 If we do so, then as long as any of the project's content is modified but `requirements.txt` has no change, `pip install` will still be re-run unnecessarily, causing waste of time and resources.
 
@@ -389,7 +389,58 @@ Answer:
 
 | Command        | Build image | Runs in background | Shows logs |
 | -------------- | :---------: | :----------------: | :--------: |
-| `up -d`      |     ✅     |         ❌         |     ✅     |
-| `up --build` |     ❌     |         ✅         |     ❌     |
+| `up --build` |     ✅     |         ❌         |     ✅     |
+| `up -d`      |     ❌     |         ✅         |     ❌     |
 
 Personally I prefer combining both options: `docker compose --build -d`, but this doesn't show the logs.
+
+### 6 - GitHub Actions CI/CD
+
+For this project, we'll introduce an automated CI/CD that runs during each push to its GitHub repository to check the software integrity. It builds the Docker image and checks whether it's successful.
+
+The workflow:
+
+```plaintext
+push to GitHub
+    ↓
+GitHub Actions runner starts
+    ↓
+checkout project repository
+    ↓
+build Docker image
+    ↓
+check running containers
+    ↓
+test FastAPI endpoint
+    ↓
+(success/fail)
+```
+
+*Study and refer to this page for the documentations of GitHub Actions - https://docs.github.com/en/actions*
+
+First of all, create a folder in the root directory named `.github`.
+
+Inside it, create a folder named `workflows`.
+
+Go inside, create a file named `docker-build.yml`.
+
+```plaintext
+.github/
+└── workflows/
+    └── docker-build.yml
+```
+
+Write the `.yml` file to build the workflow shown above.
+
+* Name: `docker-build`
+* Run name: `Build Docker image and test FastAPI endpoint`
+* Job name: `build-docker-image`
+* Runs on: `ubuntu-latest`
+
+Recommended: Give the name to each step run.
+
+```yaml
+steps:
+  - name: ...
+    run: ...
+```
