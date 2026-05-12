@@ -437,10 +437,18 @@ Write the `.yml` file to build the workflow shown above.
 * Job name: `build-docker-image`
 * Runs on: `ubuntu-latest`
 
-Recommended: Give the name to each step run.
+Recommendations: 
+
+Give the name to each step run.
 
 ```yaml
 steps:
   - name: ...
     run: ...
+```
+
+Use a simple bash snippet to test the FastAPI endpoint using a loop and pause intervals. Exit with code 0 if it starts properly in time. Otherwise, exit with code 1 (error). Use this command to test the endpoint:
+
+```bash
+curl -s http://localhost:8000/docs | grep "Swagger UI"
 ```
