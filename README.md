@@ -24,9 +24,10 @@ Client
 
 ### 1 - Install tools
 
-* Python
-* Docker Desktop
-* Terraform (and add to Path)
+* [Python](https://www.python.org/downloads/)
+* [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+* [Terraform](https://developer.hashicorp.com/terraform/install) (and add to Path)
+* [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
 
 Create Python virtual environment, activate it and install libraries.
 
@@ -460,7 +461,11 @@ curl -s http://localhost:8000/docs | grep "Swagger UI"
 
 ### 7 - AWS
 
-In this stage, we'll be setting up our AWS cloud infrastructure. We'll use the infrastructure to host and run our Docker containers. Meanwhile, make sure you have installed [Terraform](https://developer.hashicorp.com/terraform/install) and added it to Path.
+In this stage, we'll be setting up our AWS cloud infrastructure. We'll use the infrastructure to host and run our Docker containers. Meanwhile, make sure you have installed AWS CLI.
+
+```cmd
+aws --version
+```
 
 #### 7.1 - Register and sign in
 
@@ -490,4 +495,246 @@ IAM stands for Identity and Access Management.
 * Once again, go to `Access Management` > `IAM users` where we can see the user that we just created.
 * On the user, click on `Create access key`.
 * On the first step -  `Access key best practices & alternatives` > `Use cases`, pick `Command Line Interface (CLI)`.
-* Skip the description tag, and then click `Create access key`. Then, download the `.csv` file immediately.
+* Skip the description tag, and then click `Create access key`. Then, download the `.csv` file immediately. It contains `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. Keep them well.
+
+#### 7.5 - Configure AWS CLI
+
+* Now, in `cmd`, run this command: `aws configure`, and enter the AWS access keys as prompted.
+* Next, for the region, get it from the console page (https://console.aws.amazon.com/) top right corner, next to the gear ⚙️ icon. For example, `us-east-1` for North Virginia, and `us-west-2` for Oregon.
+* Set `json` as the default output format.
+* Now, run `aws sts get-caller-identity` in the CMD to check the setup. If the account ID and the ARN is shown, the IAM setup is correct.
+
+### 8 - Terraform
+
+As of now, our project runs on the local PC.
+
+```plaintext
+Local machine → Docker Compose → FastAPI + PostgreSQL
+```
+
+Now, we will use Terraform and GitHub Actions to provision infrastructure and deploy the app automatically on AWS EC2.
+
+```plaintext
+GitHub Actions → Terraform → AWS EC2 (remote server) → FastAPI + PostgreSQL
+```
+
+In the root directory, create a folder named `terraform`, and inside it, create a file named `main.tf` as a start.
+
+This is the plan that we'll build in the file.
+
+```plaintext
+Terraform
+├── EC2 instance
+├── Security group
+│   ├── port 22 (SSH)
+│   └── port 8000 (FastAPI)
+└── key pair attachment
+```
+
+#### 8.1 - Setup AWS provider
+
+Open `main.tf`. We'll work on it step by step.
+
+1. Download AWS plugin.
+
+   ```
+   terraform {
+       required_providers {
+           aws = {
+               source = "hashicorp/aws"
+               version = "~> 5.0"
+           }
+       }
+   }
+   ```
+2. Add AWS provider
+
+   ```
+   provider "aws" {
+     region = "ap-southeast-1"
+   }
+   ```
+3. On CMD, `cd` into `terraform` folder, and run `terraform init`. What this does:
+
+   * Downloads AWS provider plugin
+   * Creates `.terraform/` folder
+   * Prepares the project for AWS operations
+4. Now, try running `terraform plan` and observe the output. We'll most likely get `No changes` or `No resources defined`, because we haven't created anything yet.
+
+#### 8.2 - Create AWS EC2 instance
+
+In `.tf` file, an AWS EC2 instance is known as a resource. Hence, we use the keyword `resource` to create and configure it.
+
+1. We will now create the first AWS EC2 resource. First, go to AWS Console, search for `EC2` and click into it.
+2. Now, we need to get one information from AWS Console - the AMI ID of Ubuntu server, which we need to specify in `main.tf`.
+3. Go to AWS Console, search for `EC2` and click into it.
+4. Go to `Dashboard` > `Launch instance`. Note that we do NOT need to configure and launch the virtual server instance ourselves, because that's exactly what we need Terraform for - to provision (supply) it for us!
+5. Under `Application and OS Images`, pick Ubuntu and copy its AMI ID.
+6. Scroll down, and note the `Instance type` as well. We will also specify it in `main.tf`. For this project, we will just use `t3.micro`. It's a small AWS free-tier server that's good for learning.
+7. Return to `main.tf`. Add this snippet into it. Notice that we name the server as `fastapi-dev-server` under `tags`.
+
+   ```
+   resource "aws_instance" "fastapi-server" {
+       ami = "ami-02dd44faa40720bb8"
+       instance_type = "t3.micro"
+
+       tags = {
+           Name = "fastapi-dev-server"
+       }
+   }
+   ```
+8. Now, on CMD, run `terraform plan` again, and we'll see what Terraform will do.
+9. After that, to perform the actions to create the actual EC2 instance, run `terraform apply` and type `yes` to confirm.
+10. Awesome! Now, to see the server instance, just go to the AWS Console EC2 page > `Dashboard` > `Resources` > `Instances (Running)` and click into it. Observe and confirm that `fastapi-dev-server` is up and running.
+
+```plaintext
+Terraform
+├── EC2 instance ✅
+├── Security group
+│   ├── port 22 (SSH)
+│   └── port 8000 (FastAPI)
+└── key pair attachment
+```
+
+---
+
+What happened actually?
+
+We setup AWS CLI, which links to our AWS console.
+
+Then, Terraform actually uses it to provision/create the EC2 server on our AWS console.
+
+So, what we'll do next, is to deploy our FastAPI app and PostgreSQL containers into the server.
+
+---
+
+#### 8.3 - SSH key
+
+We need to be able to SSH into our EC2 server to install Docker and deploy our app containers.
+
+1. Go to AWS console > `EC2` > `Network & Security` > `Key Pairs` and click on `Create key pair`.
+2. Name it `fastapi-dev-key`. Use type `RSA`, and use `.pem` format.
+3. Click `Create key pair`, and the browser downloads the `.pem` file.
+4. Locate your `.ssh` folder of your PC. For Windows, usually its path is `%userprofile%/.ssh`. Move the `.pem` file into it.
+5. Go to `main.tf`, under the `aws_instance` resource, add this line: `key_name = "fastapi-dev-key"`. This tells AWS to allow this SSH key to log into the server.
+6. On CMD, run `terraform apply` to apply the changes.
+7. Now, go to Go to AWS console > `EC2` > `Instances`, and get the **Public IPv4 address** of the server. We will use it to SSH into the server.
+
+```plaintext
+Terraform
+├── EC2 instance ✅
+├── Security group
+│   ├── port 22 (SSH)
+│   └── port 8000 (FastAPI)
+└── key pair attachment ✅
+```
+
+#### 8.4 - Security group
+
+We will now add another resource - AWS security group.
+
+```
+resource "aws_security_group" "fastapi-sg" {
+    name = "fastapi-security-group"
+
+    ingress {
+        description = "SSH"
+        from_port = 22
+        to_port = 22
+        protocol = "tcp"
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+
+    ingress {
+        description = "FastAPI"
+        from_port = 8000
+        to_port = 8000
+        protocol = "tcp"
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+
+    egress {
+        from_port = 0
+        to_port = 0
+        protocol = "-1"
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+
+    tags = {
+        Name = "fastapi-security-group"
+    }
+}
+```
+
+Explanation:
+
+* `ingress`: Inbound traffic allowed into the server.
+  * We opened 2 ports - 22 and 8000 here, for SSH and FastAPI respectively.
+* `egress`: Outbound traffic from server.
+  * This basically means that the server can access the internet.
+  * This is needed for `apt install`, `docker pull`, etc.
+
+Next, attach this security group resource to the `aws_instance` resource, by adding this line into it:
+
+```
+vpc_security_group_ids = [aws_security_group.fastapi-sg.id]
+```
+
+Run `terraform apply` to apply all the changes.
+
+Go to AWS console > `EC2` > `Instances` > `Security` tab, to observe and verify the changes.
+
+```plaintext
+Terraform
+├── EC2 instance ✅
+├── Security group
+│   ├── port 22 (SSH) ✅
+│   └── port 8000 (FastAPI) ✅
+└── key pair attachment ✅
+```
+
+### 9 - Server setup
+
+Since we now have our very own remote Ubuntu server, let's SSH into it.
+
+On CMD, navigate to the `.ssh` directory where we saved the `.pem` file. Then, use the `.pem` file and the server's public IPv4 address to SSH into it. Username is `ubuntu`.
+
+```cmd
+cd %userprofile%\.ssh
+ssh -i fastapi-dev-key.pem ubuntu@<public IP of server>
+```
+
+Update and upgrade its packages.
+
+```bash
+sudo apt update
+sudp apt upgrade -y
+```
+
+#### 9.1 - Install Docker
+
+Install Docker, start Docker service and enable it on boot.
+
+```bash
+sudo apt install docker.io -y
+sudo systemctl start docker
+sudo systemctl enable docker
+```
+
+Verify Docker installation.
+
+```bash
+docker --version
+```
+
+Now, for every Docker command, we must `sudo`, which is definitely undesirable. So, we need to fix this permission issue by adding the current user into the Docker group.
+
+```bash
+sudo usermod -aG docker $USER
+```
+
+Now, exit the server and SSH back in. Try this command. If there's no permission error, the Docker setup is complete.
+
+```bash
+docker ps
+```
