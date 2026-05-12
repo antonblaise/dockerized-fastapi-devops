@@ -457,3 +457,37 @@ Use a simple bash snippet to test the FastAPI endpoint using a loop and pause in
 ```bash
 curl -s http://localhost:8000/docs | grep "Swagger UI"
 ```
+
+### 7 - AWS
+
+In this stage, we'll be setting up our AWS cloud infrastructure. We'll use the infrastructure to host and run our Docker containers. Meanwhile, make sure you have installed [Terraform](https://developer.hashicorp.com/terraform/install) and added it to Path.
+
+#### 7.1 - Register and sign in
+
+* Register for an AWS user account here - https://signin.aws.amazon.com/signup?request_type=register.
+* Go to https://console.aws.amazon.com/ and sign in using root user email.
+
+#### 7.2 - Create IAM group
+
+IAM stands for Identity and Access Management.
+
+* In the console, use the search bar at the top to search for "IAM", and click on "IAM - Manage access to AWS resources".
+* From the navigation bar on the left, go to `Access Management` > `IAM user groups`, and then click on `Create group`. This is a good practice, as instead of assigning permissions directly to users, we use a group.
+* Name the group as `devops-admin`, and attach the policy `AdministratorAccess`. Scroll down, and click `Create user group`.
+
+#### 7.3 - Create IAM user
+
+* Now, go to `Access Management` > `IAM users` and click on `Create user`.
+* Name the user as `terraform-user`, and tick `Provide user access to the AWS Management Console`.
+* You can either autogenerate the password, or create a custom one. Just don't forget/lose it.
+* As this is a learning project, we can untick this - `Users must create a new password at next sign-in`.
+* Go to the next step - `Set permissions`. Under `Permissions options`, pick `Add user to group`.
+* Add the user to the `devops-admin` group that we created.
+* Go to the next step - `Review and create`. Review every info. If all is good, click on `Create user`.
+
+#### 7.4 - Create access keys
+
+* Once again, go to `Access Management` > `IAM users` where we can see the user that we just created.
+* On the user, click on `Create access key`.
+* On the first step -  `Access key best practices & alternatives` > `Use cases`, pick `Command Line Interface (CLI)`.
+* Skip the description tag, and then click `Create access key`. Then, download the `.csv` file immediately.
