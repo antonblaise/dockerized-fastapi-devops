@@ -551,7 +551,7 @@ Open `main.tf`. We'll work on it step by step.
 
    ```
    provider "aws" {
-     region = "ap-southeast-1"
+       region = "ap-southeast-1"
    }
    ```
 3. On CMD, `cd` into `terraform` folder, and run `terraform init`. What this does:
