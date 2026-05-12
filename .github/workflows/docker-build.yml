@@ -15,7 +15,7 @@ jobs:
           docker ps | grep "fastapi-app"
       - name: Test FastAPI endpoint
         run: |
-          for i in {1..10} do
+          for i in {1..10}; do
             echo "Attempt $i ..."
 
             if curl -s http://localhost:8000/docs | grep "Swagger UI"; then
