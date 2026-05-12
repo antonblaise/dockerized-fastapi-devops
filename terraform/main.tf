@@ -69,3 +69,7 @@ resource "local_file" "private_key" {
     content  = tls_private_key.fastapi_key.private_key_pem
     filename = "${path.module}/fastapi-dev-key.pem"
 }
+
+output "ec2_public_ip" {
+    value = aws_instance.fastapi-server.public_ip
+}

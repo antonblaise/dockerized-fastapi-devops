@@ -707,6 +707,14 @@ Next, attach this security group resource to the `aws_instance` resource, by add
 vpc_security_group_ids = [aws_security_group.fastapi-sg.id]
 ```
 
+[Optional] Add an output in `main.tf` to show the public IP of the `aws_instance`.
+
+```
+output "ec2_public_ip" {
+    value = aws_instance.fastapi-server.public_ip
+}
+```
+
 Run `terraform apply` to apply all the changes.
 
 Go to AWS console > `EC2` > `Instances` > `Security` tab, to observe and verify the changes.
