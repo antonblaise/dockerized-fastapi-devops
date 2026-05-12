@@ -19,7 +19,7 @@ resource "aws_instance" "fastapi-server" {
         Name = "fastapi-dev-server"
     }
 
-    key_name = "fastapi-dev-key"
+    key_name = aws_key_pair.fastapi_key.key_name
 
     vpc_security_group_ids = [aws_security_group.fastapi-sg.id]
 }
@@ -53,4 +53,19 @@ resource "aws_security_group" "fastapi-sg" {
     tags = {
         Name = "fastapi-security-group"
     }
+}
+
+resource "tls_private_key" "fastapi_key" {
+    algorithm = "RSA"
+    rsa_bits   = 4096
+}
+
+resource "aws_key_pair" "fastapi_key" {
+    key_name = "fastapi-dev-key"
+    public_key = tls_private_key.fastapi_key.public_key_openssh
+}
+
+resource "local_file" "private_key" {
+    content  = tls_private_key.fastapi_key.private_key_pem
+    filename = "${path.module}/fastapi-dev-key.pem"
 }

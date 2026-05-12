@@ -520,7 +520,7 @@ GitHub Actions → Terraform → AWS EC2 (remote server) → FastAPI + PostgreSQ
 
 In the root directory, create a folder named `terraform`, and inside it, create a file named `main.tf` as a start.
 
-This is the plan that we'll build in the file.
+This is the plan that we'll build in `main.tf`.
 
 ```plaintext
 Terraform
@@ -563,7 +563,7 @@ Open `main.tf`. We'll work on it step by step.
 
 #### 8.2 - Create AWS EC2 instance
 
-In `.tf` file, an AWS EC2 instance is known as a resource. Hence, we use the keyword `resource` to create and configure it.
+In a `.tf` file, an AWS EC2 instance is known as a resource. Hence, we use the keyword `resource` to create and configure it.
 
 1. We will now create the first AWS EC2 resource. First, go to AWS Console, search for `EC2` and click into it.
 2. Now, we need to get one information from AWS Console - the AMI ID of Ubuntu server, which we need to specify in `main.tf`.
@@ -612,13 +612,40 @@ So, what we'll do next, is to deploy our FastAPI app and PostgreSQL containers i
 
 We need to be able to SSH into our EC2 server to install Docker and deploy our app containers.
 
-1. Go to AWS console > `EC2` > `Network & Security` > `Key Pairs` and click on `Create key pair`.
-2. Name it `fastapi-dev-key`. Use type `RSA`, and use `.pem` format.
-3. Click `Create key pair`, and the browser downloads the `.pem` file.
-4. Locate your `.ssh` folder of your PC. For Windows, usually its path is `%userprofile%/.ssh`. Move the `.pem` file into it.
-5. Go to `main.tf`, under the `aws_instance` resource, add this line: `key_name = "fastapi-dev-key"`. This tells AWS to allow this SSH key to log into the server.
-6. On CMD, run `terraform apply` to apply the changes.
-7. Now, go to Go to AWS console > `EC2` > `Instances`, and get the **Public IPv4 address** of the server. We will use it to SSH into the server.
+Since we want to follow the mindset of Infrastructure as Code (IaC), let's use Terraform to create and attach the key pair for us, instead of manually creating it from AWS console.
+
+First, create a `tls_private_key` resource in `main.tf` to generate SSH key pair using RSA.
+
+```
+resource "tls_private_key" "fastapi_key" {
+    algorithm = "RSA"
+    rsa_bits   = 4096
+}
+```
+
+Create an `aws_key_pair` resource named `fastapi_key` that points to the OpenSSH public key created by `tls_private_key`.
+
+```
+resource "aws_key_pair" "fastapi_key" {
+    key_name = "fastapi-dev-key"
+    public_key = tls_private_key.fastapi_key.public_key_openssh
+}
+```
+
+Then, attach the key to the EC2 instance by adding this line into it.
+
+```
+key_name = aws_key_pair.fastapi_key.key_name
+```
+
+Finally, export the private key `.pem` into `terraform` folder. We'll use this `.pem` file to SSH into our server later.
+
+```
+resource "local_file" "private_key" {
+    content  = tls_private_key.fastapi_key.private_key_pem
+    filename = "${path.module}/fastapi-dev-key.pem"
+}
+```
 
 ```plaintext
 Terraform
@@ -669,7 +696,7 @@ resource "aws_security_group" "fastapi-sg" {
 Explanation:
 
 * `ingress`: Inbound traffic allowed into the server.
-  * We opened 2 ports - 22 and 8000 here, for SSH and FastAPI respectively.
+  * We open 2 ports - 22 and 8000 here, for SSH and FastAPI respectively.
 * `egress`: Outbound traffic from server.
   * This basically means that the server can access the internet.
   * This is needed for `apt install`, `docker pull`, etc.
@@ -697,10 +724,9 @@ Terraform
 
 Since we now have our very own remote Ubuntu server, let's SSH into it.
 
-On CMD, navigate to the `.ssh` directory where we saved the `.pem` file. Then, use the `.pem` file and the server's public IPv4 address to SSH into it. Username is `ubuntu`.
+On CMD, make sure you're in `terraform` folder where we exported the `.pem` file. Then, use the `.pem `file and the server's public IPv4 address to SSH into it. Username is `ubuntu`.
 
 ```cmd
-cd %userprofile%\.ssh
 ssh -i fastapi-dev-key.pem ubuntu@<public IP of server>
 ```
 
@@ -709,6 +735,13 @@ Update and upgrade its packages.
 ```bash
 sudo apt update
 sudp apt upgrade -y
+```
+
+[Optional but recommended] Remove unnecessary packages and clean cache.
+
+```bash
+sudo apt autoremove -y
+sudo apt autoclean
 ```
 
 #### 9.1 - Install Docker
@@ -738,3 +771,40 @@ Now, exit the server and SSH back in. Try this command. If there's no permission
 ```bash
 docker ps
 ```
+
+#### 9.2 - Install Docker Compose
+
+On Ubuntu, Docker Compose is separate from Docker Engine. Also, it is not the same as the old `docker-compose` binary.
+
+Run these to install it and verify the installation.
+
+```bash
+sudo apt install docker-compose-v2 -y
+docker compose version
+```
+
+Do note that we'll be using `docker compose` instead of `docker-compose` here in Ubuntu. No hyphen `-`.
+
+#### 9.3 - Install Git. clone and run project
+
+Run these to install and verify Git.
+
+```bash
+sudo apt install git -y
+git --version
+```
+
+Then, clone this project's repository and `cd` into it.
+
+```bash
+git clone https://github.com/antonblaise/dockerized-fastapi-devops.git
+cd dockerized-fastapi-devops/
+```
+
+Use this command to build and run the containers.
+
+```bash
+docker compose up --build -d
+```
+
+Use `docker ps` to check the containers. Meanwhile, go to `http://<public IP of server>:8000/docs` on browser to test it out. Be sure to specify `http` for the address, or the page will be unreachable.
