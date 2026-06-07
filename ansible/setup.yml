@@ -1,0 +1,15 @@
+---
+- name: Configure AWS EC2 Instance and Deploy FastAPI App
+  hosts: fastapi_servers
+
+  pre_tasks:
+    - name: Update apt cache
+      become: yes
+      ansible.builtin.apt:
+        update_cache: yes
+        cache_valid_time: 86400
+
+  roles:
+    - base
+    - docker
+    - fastapi

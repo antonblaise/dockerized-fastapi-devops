@@ -1,0 +1,3 @@
+---
+# vars file for fastapi
+fastapi_repo_path: "{{ ansible_env.HOME }}/dockerized-fastapi-devops"

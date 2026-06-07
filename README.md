@@ -443,14 +443,13 @@ steps:
     run: ...
 ```
 
-Use `paths-ignore` to ignore changes from some files/folders.
+Use `paths` to only watch changes from some files/folders.
 
 ```yaml
 on:
   push:
-    paths-ignore:
-    - ...
-    - ...
+    paths:
+      - 'app/**'
 ```
 
 Use a simple bash snippet to test the FastAPI endpoint using a loop and pause intervals. Exit with code 0 if it starts properly in time. Otherwise, exit with code 1 (error). Use this command to test the endpoint:
@@ -519,6 +518,11 @@ GitHub Actions → Terraform → AWS EC2 (remote server) → FastAPI + PostgreSQ
 ```
 
 In the root directory, create a folder named `terraform`, and inside it, create a file named `main.tf` as a start.
+
+```plaintext
+terraform/
+└── main.tf
+```
 
 This is the plan that we'll build in `main.tf`.
 
@@ -715,9 +719,38 @@ output "ec2_public_ip" {
 }
 ```
 
+#### 8.5 - Write the Ansible `inventory.ini` file
+
+Skip this step if you are not following the automated setup in Chapter 9.1, which is using Ansible. Though, it's highly recommended.
+
+First of all, create a folder named `ansible` in the root directory of this project.
+
+Create another `local file` resource in `main.tf`, named "ansible_inventory".
+
+```
+resource "local_file" "ansible_inventory" {
+    filename = "${path.module}/../ansible/inventory.ini"
+    content = <<EOF
+[fastapi_servers]
+fastapi-dev-server ansible_host=${aws_instance.fastapi-server.public_ip} ansible_user=ubuntu ansible_private_key_file=~/.ssh/fastapi-dev-key.pem
+EOF
+}
+```
+
+This writes the following content into `inventory.ini` of `ansible` folder. If it doesn't exist, it will create it. Otherwise, it overwrites it.
+
+```ini
+[fastapi_servers]
+fastapi-dev-server ansible_host=<public IP> ansible_user=ubuntu ansible_private_key_file=~/.ssh/fastapi-dev-key.pem
+```
+
+#### 8.6 - Provision the AWS instance
+
+Now that we've completed the 'Code' part in Infrastructure as Code (IaC), let's run it so it automatically provisions the AWS instance for us, without us needing to do everything manually on the AWS Console.
+
 Run `terraform apply` to apply all the changes.
 
-Go to AWS console > `EC2` > `Instances` > `Security` tab, to observe and verify the changes.
+Go to AWS console > `EC2` > `Instances` to observe and verify the changes.
 
 ```plaintext
 Terraform
@@ -729,6 +762,132 @@ Terraform
 ```
 
 ### 9 - Server setup
+
+#### 9.1 - Automated method - Ansible
+
+Ansible is another great tool in IaC. With an Ansible playbook, we can automate the setup process of our remote Ubuntu server that we just provisioned on AWS EC2.
+
+Note that this section will continue to work in this project's workspace. We do not create a different project, but rather, make use of the `ansible` folder created in Chapter 8.5.
+
+##### 9.1.1 - Copy private key to Ansible machine
+
+Copy the `terraform/fastapi-dev-key.pem` file into the `~/.ssh/` folder of whatever Linux machine that you're running Ansible from.
+
+##### 9.1.2 - Folder and content
+
+In Chapter 8.5, we already created the `ansible` folder and the inventory INI file. Next, we'll create the playbook - `setup.yml`.
+
+```yaml
+---
+- name: Configure AWS EC2 Instance and Deploy FastAPI App
+  hosts: fastapi_servers
+
+  pre_tasks:
+    - name: Update apt cache
+      become: yes
+      ansible.builtin.apt:
+        update_cache: yes
+        cache_valid_time: 86400
+
+  roles:
+    - base
+    - docker
+    - fastapi
+```
+
+The cache valid time is 1 day in seconds.
+
+##### 9.1.3 - Roles and tasks
+
+Use `ansible-galaxy` to create these roles:
+
+* base - update apt cache and install essential packages
+* docker - install Docker and disable sudo for Docker
+* fastapi - clone and run the app
+
+```bash
+ansible-galaxy role init <role>
+```
+
+This will create a directory for each role.
+
+Now, in each role's folder, go to `tasks/main.yml`.
+
+* base
+
+  ```yaml
+  ---
+  # tasks file for base
+  - name: Install core packages
+    become: yes
+    ansible.builtin.apt:
+      name:
+        - git
+      state: present
+  ```
+
+  This installs the `git` package on the Ubuntu VM.
+* docker
+
+  ```yaml
+  ---
+  # tasks file for docker
+  - name: Install Docker
+    become: yes
+    ansible.builtin.apt:
+      name:
+        - docker.io
+        - docker-compose-v2
+      state: present
+
+  - name: Disable sudo requirement
+    become: yes
+    ansible.builtin.user:
+      name: "{{ ansible_user_id }}"
+      groups: docker
+      append: yes
+
+  - name: Reset connection to apply Docker group changes
+    ansible.builtin.meta: reset_connection
+  ```
+
+  This installs `docker` and `docker-compose`, enables `ubuntu` user to run `docker` command directly without needing to `sudo`, by adding `ubuntu` user to the `docker` group.
+* fastapi
+
+  ```yaml
+  ---
+  # tasks file for fastapi
+  - name: Clone the FastAPI repository
+    ansible.builtin.git:
+      repo: "https://github.com/antonblaise/dockerized-fastapi-devops.git"
+      dest: "{{ fastapi_repo_path }}"
+      version: main
+
+  - name: Build and run the containers
+    become: yes
+    ansible.builtin.command:
+      cmd: docker compose up -d --build
+      chdir: "{{ fastapi_repo_path }}"
+    register: compose_result
+    failed_when: 
+      - compose_result.rc != 0
+      - '"Already up-to-date" not in compose_result.stderr'
+  ```
+
+  This clones the repository, builds and runs the app containers.
+  Next, we need to define the `fastapi_repo_path` variable in `vars/main.yml`.
+
+  ```yaml
+  ---
+  # vars file for fastapi
+  fastapi_repo_path: "{{ ansible_env.HOME }}/dockerized-fastapi-devops"
+  ```
+
+Now, we have our AWS EC2 instance of Ubuntu VM running our app images on the cloud!
+
+Feel free to manually ssh into it and run `docker ps` or any other things you want, to see and verify the changes. Meanwhile, go to `http://<public IP of server>:8000/docs` on browser to test it out. Be sure to specify `http` for the address, or the page will be unreachable.
+
+#### 9.2 - Manual method
 
 Since we now have our very own remote Ubuntu server, let's SSH into it.
 
@@ -752,7 +911,7 @@ sudo apt autoremove -y
 sudo apt autoclean
 ```
 
-#### 9.1 - Install Docker
+###### 9.2.1 - Install Docker
 
 Install Docker, start Docker service and enable it on boot.
 
@@ -780,7 +939,7 @@ Now, exit the server and SSH back in. Try this command. If there's no permission
 docker ps
 ```
 
-#### 9.2 - Install Docker Compose
+##### 9.2.2 - Install Docker Compose
 
 On Ubuntu, Docker Compose is separate from Docker Engine. Also, it is not the same as the old `docker-compose` binary.
 
@@ -793,7 +952,7 @@ docker compose version
 
 Do note that we'll be using `docker compose` instead of `docker-compose` here in Ubuntu. No hyphen `-`.
 
-#### 9.3 - Install Git. clone and run project
+##### 9.2.3 - Install Git. clone and run project
 
 Run these to install and verify Git.
 

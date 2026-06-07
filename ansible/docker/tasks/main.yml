@@ -1,0 +1,19 @@
+---
+# tasks file for docker
+- name: Install Docker
+  become: yes
+  ansible.builtin.apt:
+    name:
+      - docker.io
+      - docker-compose-v2
+    state: present
+
+- name: Disable sudo requirement
+  become: yes
+  ansible.builtin.user:
+    name: "{{ ansible_user_id }}"
+    groups: docker
+    append: yes
+
+- name: Reset connection to apply Docker group changes
+  ansible.builtin.meta: reset_connection

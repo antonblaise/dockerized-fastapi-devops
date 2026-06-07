@@ -69,7 +69,13 @@ resource "local_file" "private_key" {
     content  = tls_private_key.fastapi_key.private_key_pem
     filename = "${path.module}/fastapi-dev-key.pem"
 }
-
+resource "local_file" "ansible_inventory" {
+    filename = "${path.module}/../ansible/inventory.ini"
+    content = <<EOF
+[fastapi_servers]
+fastapi-dev-server ansible_host=${aws_instance.fastapi-server.public_ip} ansible_user=ubuntu ansible_private_key_file=~/.ssh/fastapi-dev-key.pem
+EOF
+}
 output "ec2_public_ip" {
     value = aws_instance.fastapi-server.public_ip
 }
