@@ -8,3 +8,6 @@ __pycache__/
 *.tfstate.*
 terraform/.terraform.lock.hcl
 *.pem
+
+# Ansible
+inventory.ini
