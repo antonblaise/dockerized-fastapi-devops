@@ -1,6 +1,7 @@
 name: docker-build
 run-name: Build Docker image and test FastAPI endpoint
 on:
+  workflow_dispatch:
   push:
     paths:
       - 'app/**'
