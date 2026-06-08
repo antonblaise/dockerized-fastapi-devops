@@ -18,6 +18,7 @@ Client
  → GitHub Actions (CI)
  → Terraform (Infrastructure)
  → AWS (EC2)
+ → [Optional] Ansible (setup VM)
 ```
 
 ## Milestones
@@ -36,6 +37,14 @@ python -m venv venv
 venv\Scripts\activate
 pip install fastapi uvicorn
 ```
+
+[Optional]
+
+Using Ansible to automate the AWS EC2 VM setup and app deployment:
+
+Get a Linux VM, either WSL or VirtualBox, and install Ansible on it. The Linux machine acts as the Ansible control node. 
+
+Installation guide: https://docs.ansible.com/projects/ansible/latest/installation_guide/installation_distros.html
 
 ### 2 - Build basic app
 
